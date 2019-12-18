@@ -1,0 +1,12 @@
+{
+    "name": "taha20/sms",
+    "description": "send sms",
+    "type": "library",
+    "authors": [
+        {
+            "name": "Rasoul khoshkhu",
+            "email": "khoshkhu@ahoo.com"
+        }
+    ],
+    "require": {}
+}
