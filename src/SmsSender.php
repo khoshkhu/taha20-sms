@@ -5,40 +5,50 @@ namespace Taha20\Sms;
 
 
 
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+
 class SmsSender
 {
-    private static $config ;
-    protected static $username ;
-    protected static $password ;
-    protected static $from ;
-    protected static $BASE_HTTP_URL = "https://www.payam-resan.com/";
-    protected static $WEB_SERVICE_URL = "http://sms-webservice.ir/v1/v1.asmx?WSDL";
+    private $config ;
+    private $db;
+    protected $username ;
+    protected $password ;
+    protected $senderNumber ;
+    protected $BASE_HTTP_URL = "https://www.payam-resan.com/";
+    protected $WEB_SERVICE_URL = "http://sms-webservice.ir/v1/v1.asmx?WSDL";
 
-    private static function init()
+    public function __construct()
     {
-        if (!empty(self::$config)) return;
-        self::$config = include __DIR__ . '/Config.php';
-        self::$username =  self::$config['username'];
-        self::$password =  self::$config['password'];
-        self::$from =  self::$config['from'];
+        $this->db = app('db');
+        $this->init();
     }
 
+    private function init()
+    {
+        $this->config = app('config');
+        $this->username = $this->config->get('sms.payamresan.username');
+        $this->password = $this->config->get('sms.payamresan.password');
+        $this->senderNumber = $this->config->get('sms.payamresan.sender_number');
+        $this->BASE_HTTP_URL = $this->config->get('sms.payamresan.base_http_url');
+        $this->WEB_SERVICE_URL = $this->config->get('sms.payamresan.web_service_url');
+       // dd($this->config);
+    }
 
     /**
      * @param $to
      * @param $message
      * @return array
      */
-    public static function sendUrl($to, $message)
+    public function sendUrl($to, $message)
     {
-        self::init();
         $count = array();
-        $url = self::$BASE_HTTP_URL.'APISend.aspx?'."Username=".urlencode(self::$username)."&Password=".urlencode(self::$password);
+        $url = $this->BASE_HTTP_URL.'APISend.aspx?'."Username=".$this->username."&Password=".$this->password;
         if (is_array($message) && !is_array($to)) return false;
         if (is_array($message) && count($message) != count($to)) return false;
+        $i = 0;
         if (is_array($to))
         {
-            $i = 0;
             $while = true;
             if (!is_array($message)) {
                 $message[0] = $message;
@@ -46,24 +56,41 @@ class SmsSender
             }
             foreach ($to as $number)
             {
-                $tem_url = $url . "&From=".urlencode(self::$from)."&To=".urlencode($number)."&Text=".urlencode($message[$i]);
-                $count[] = file_get_contents($tem_url);
+                $tem_url = $url . "&From=".$this->senderNumber."&To=".$number."&Text=".urlencode($message[$i]);
+                $count[$i]['messageId'] = file_get_contents($tem_url);
+                $count[$i]['mobile'] = $number;
+                $count[$i]['text'] = $message[$i];
+                $count[$i]['method'] = 'url';
+                $count[$i]['senderNumber'] = $this->senderNumber;
+                $count[$i]['flash'] = 1;
+                $count[$i]['status'] = 11;
+                $count[$i]['send_at'] = Carbon::now($this->config->get('app.timezone'));
+                $count[$i]['type'] = 'send';
                 if ($while) $i++;
             }
+            $this->save($count);
             return $count;
         }
-        $url .= "&From=".urlencode(self::$from)."&To=".urlencode($to)."&Text=".urlencode($message);
-        $count[] = file_get_contents($url);
+        $url .= "&From=".$this->senderNumber."&To=".$to."&Text=".urlencode($message);
+        $count['messageId'] = file_get_contents($url);
+        $count['mobile'] = $to;
+        $count['text'] = $message;
+        $count['method'] = 'url';
+        $count['senderNumber'] = $this->senderNumber;
+        $count['flash'] = 1;
+        $count['status'] = 11;
+        $count['send_at'] = Carbon::now($this->config->get('app.timezone'));
+        $count['type'] = 'send';
+        $this->save($count);
         return $count;
     }
 
     /**
      * @return false|string
      */
-    public static function getCreditUrl()
+    public function getCreditUrl()
     {
-        self::init();
-        $url = self::$BASE_HTTP_URL.'Credit.aspx?'."Username=".urlencode(self::$username)."&Password=".urlencode(self::$password);
+        $url = $this->BASE_HTTP_URL.'Credit.aspx?'."Username=".$this->username."&Password=".$this->password;
         return file_get_contents($url);
     }
 
@@ -73,12 +100,11 @@ class SmsSender
      * @param int $type
      * @return array
      */
-    public static function send($to, $message, $type = 1)
+    public function send($to, $message, $type = 1)
     {
         try
         {
-            $client = new \SoapClient(self::$WEB_SERVICE_URL);
-            self::init();
+            $client = new \SoapClient($this->WEB_SERVICE_URL);
             $count = array();
             if (is_array($message) && !is_array($to)) {
                 $count['error'] = 'type';
@@ -88,9 +114,9 @@ class SmsSender
                 $count['error'] = 'size';
                 return $count;
             }
-            $parameters['Username'] = self::$username;
-            $parameters['PassWord'] = self::$password;
-            $parameters['SenderNumber'] = self::$from;
+            $parameters['Username'] = $this->username;
+            $parameters['PassWord'] = $this->password;
+            $parameters['SenderNumber'] = $this->senderNumber;
             $parameters['Type'] = $type;
             $parameters['AllowedDelay'] = 0;
             if (!is_array($to)) $to[0] = $to;
@@ -116,6 +142,7 @@ class SmsSender
                 if (!is_array($res->SendMessageResult->long)) $res->SendMessageResult->long = [$res->SendMessageResult->long];
                 $count = array_merge($count,$res->SendMessageResult->long);
             }
+            $this->save($count);
             return $count;
         }
         catch (\SoapFault $ex)
@@ -130,16 +157,15 @@ class SmsSender
      * @param $massage_id
      * @return array
      */
-    public static function getMessagesStatus($massage_id)
+    public function getMessagesStatus($massage_id)
     {
         try
         {
-            $client = new \SoapClient(self::$WEB_SERVICE_URL);
-            self::init();
+            $client = new \SoapClient($this->WEB_SERVICE_URL);
             $count = array();
             $parameters = array();
-            $parameters['Username'] = self::$username;
-            $parameters['PassWord'] = self::$password;
+            $parameters['Username'] = $this->username;
+            $parameters['PassWord'] = $this->password;
             if (!is_array($massage_id)) $massage_id[0] = $massage_id;
             $massage_id = array_chunk($massage_id,99);
             foreach ($massage_id as $key => $item)
@@ -149,6 +175,7 @@ class SmsSender
                 if (!is_array($res->GetMessagesStatusResult->long)) $res->GetMessagesStatusResult->long = [$res->GetMessagesStatusResult->long];
                 $count = array_merge($count,$res->GetMessagesStatusResult->long);
             }
+            $this->update();
             return $count;
         }
         catch (\SoapFault $ex)
@@ -162,15 +189,14 @@ class SmsSender
     /**
      * @return mixed
      */
-    public static function getCredit()
+    public function getCredit()
     {
         try
         {
-            $client = new \SoapClient(self::$WEB_SERVICE_URL);
-            self::init();
+            $client = new \SoapClient($this->WEB_SERVICE_URL);
             $parameters = array();
-            $parameters['Username'] = self::$username;
-            $parameters['PassWord'] = self::$password;
+            $parameters['Username'] = $this->username;
+            $parameters['PassWord'] = $this->password;
             $res = $client->GetCredit($parameters);
             return $res->GetCreditResult;
         }
@@ -187,15 +213,14 @@ class SmsSender
      * @param string $desNumber
      * @return mixed
      */
-    public static function getReceiveMessage($numberOfMessages = 99 , $desNumber = '' )
+    public function getReceiveMessage($numberOfMessages = 99 , $desNumber = '' )
     {
         try
         {
-            $client = new \SoapClient(self::$WEB_SERVICE_URL);
-            self::init();
+            $client = new \SoapClient($this->WEB_SERVICE_URL);
             $parameters = array();
-            $parameters['Username'] = self::$username;
-            $parameters['PassWord'] = self::$password;
+            $parameters['Username'] = $this->username;
+            $parameters['PassWord'] = $this->password;
             $parameters['destNumber'] = $desNumber;
             $parameters['numberOfMessages'] = $numberOfMessages;
             $res = $client->GetAllMessages($parameters);
@@ -209,6 +234,20 @@ class SmsSender
         }
     }
 
+    private function getTable()
+    {
+        return $this->db->table('sms');
+    }
+    private function save($data)
+    {
+       $this->getTable()->insert($data);
+        //Sms::create($data);
+    }
+
+    private function update()
+    {
+
+    }
     /**
      * @param $code
      * @return string
@@ -323,6 +362,12 @@ class SmsSender
                 break;
             case 10:
                 $message = 'نا مشخص';
+                break;
+            case 11:
+                $message = 'ارسال به سرویس پیامک';
+                break;
+            case 12:
+                $message = 'دریافتی';
                 break;
         }
         return $message;

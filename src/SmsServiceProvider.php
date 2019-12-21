@@ -24,6 +24,17 @@ class SmsServiceProvider extends ServiceProvider
     public function boot()
     {
         //
-       $this->app->bind('SmsSender','Taha20\Sms\SmsSender');
+        $this->loadMigrationsFrom(__DIR__.'/../migrations');
+        $this->publishes([
+            __DIR__.'/../migrations' => database_path('migrations')
+        ],'migrations');
+
+        $this->publishes([
+            __DIR__.'/../config/sms.php' => config_path('sms.php')
+        ],'config');
+
+        $this->app->singleton('SmsSender',function (){
+            return new SmsSender();
+        });
     }
 }
