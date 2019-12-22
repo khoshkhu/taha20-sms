@@ -32,7 +32,6 @@ class SmsSender
         $this->senderNumber = $this->config->get('sms.payamresan.sender_number');
         $this->BASE_HTTP_URL = $this->config->get('sms.payamresan.base_http_url');
         $this->WEB_SERVICE_URL = $this->config->get('sms.payamresan.web_service_url');
-       // dd($this->config);
     }
 
     /**
@@ -236,11 +235,13 @@ class SmsSender
 
     private function getTable()
     {
+
         return $this->db->table('sms');
     }
     private function save($data)
     {
-       $this->getTable()->insert($data);
+        Sms::create($data);
+       //$this->getTable()->insert($data);
         //Sms::create($data);
     }
 

@@ -6,6 +6,6 @@ return [
         'base_http_url' => 'https://www.payam-resan.com/',
         'username' => 'khoshkhu',
         'password' => '136295',
-        'sender-number' => '50002030009988'
+        'sender_number' => '50002030009988'
     ]
 ];
